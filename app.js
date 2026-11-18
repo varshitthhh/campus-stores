@@ -179,19 +179,34 @@
       "</select></label></div>";
     for (const a of assets) {
       const loan = openLoan(s, a.id);
-      const status = a.repair ? "In repair" : loan ? "On loan" : "On shelf";
+      const counter = L.heldAtCounter(s, a.id);
+      const status = a.repair
+        ? "In repair"
+        : loan
+          ? "On loan"
+          : counter
+            ? "At counter"
+            : "On shelf";
       if (s.filter !== "All items" && s.filter !== status) continue;
       html += row(
         a.id + " · " + a.type,
         a.model +
           " · " +
           a.bin +
+          (!loan && counter
+            ? " · Received on L-" + counter.num + ", not the slip unit"
+            : "") +
           (loan
             ? " · " +
               holderText(loan).replace(/^with/, "With") +
               " (L-" + loan.num + ", due " + loan.due + ")"
             : ""),
-        badge(status, status === "On shelf" ? "good" : "") +
+        badge(
+          status === "At counter"
+            ? "At counter · check unit (L-" + counter.num + ")"
+            : status,
+          status === "On shelf" ? "good" : status === "At counter" ? "warn" : "",
+        ) +
           (loan ? promiseBadge(loan) + overdueBadge(loan) : ""),
       );
     }
@@ -609,8 +624,7 @@
         break;
       }
       case "handover":
-        s.notes.push({ phase: s.phase, text: L.handoverText(s) });
-        s.notice = "Outstanding list saved to the desk book.";
+        L.saveHandoverNote(s);
         break;
     }
     commit(null, focus);

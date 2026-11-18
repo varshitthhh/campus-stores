@@ -65,7 +65,7 @@ npm install
 npm test
 ```
 
-The suite has 47 tests. `tests/logic.test.js` covers the rules (issue validation, fulfilment, overdue, returns, reopen, restore). `tests/app.test.js` drives the real page end to end: the full pickup to return story, validation errors, persistence, blocked storage, and markup injection.
+The suite has 50 tests. `tests/logic.test.js` covers the rules (issue validation, fulfilment, overdue, returns, reopen, restore). `tests/app.test.js` drives the real page end to end: the full pickup to return story, validation errors, persistence, blocked storage, and markup injection.
 
 ## Source
 

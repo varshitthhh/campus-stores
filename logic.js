@@ -150,6 +150,10 @@
     return !loan.back && deskTime(s) > (dueTimes[loan.due] ?? Infinity);
   }
 
+  /* An open slip whose wrong-unit return left `assetId` at the counter. */
+  const heldAtCounter = (s, assetId) =>
+    s.loans.find((l) => !l.back && l.mismatch && l.mismatch.received === assetId);
+
   /* Open slip for this request and equipment type, if any. */
   function openForType(s, reqId, type) {
     return s.loans.find(
@@ -165,6 +169,7 @@
       (a) =>
         !a.repair &&
         !openLoan(s, a.id) &&
+        !heldAtCounter(s, a.id) &&
         (!r || (r.items.includes(a.type) && !openForType(s, r.id, a.type))),
     );
   }
@@ -215,6 +220,9 @@
     const held = openLoan(s, unit.id);
     if (held)
       return unit.id + " is already out on slip L-" + held.num + ".";
+    const counter = heldAtCounter(s, unit.id);
+    if (counter)
+      return unit.id + " is at the counter pending a unit check on L-" + counter.num + ".";
     if (!r.items.includes(unit.type))
       return "This equipment type is outside the approved request. Choose an approved unit.";
     if (openForType(s, r.id, unit.type))
@@ -285,6 +293,13 @@
       return { ok: false, error: "Choose who has the unit now." };
     if (!Object.hasOwn(dueTimes, promised))
       return { ok: false, error: "Choose when it is promised back." };
+    if (dueTimes[promised] < deskTime(s))
+      return { ok: false, error: "That time has already passed." };
+    if (holderOf(loan) === holder && loan.promised === promised)
+      return {
+        ok: false,
+        error: "Nothing has changed: it is already " + holderText(loan) + ".",
+      };
     loan.holder = holder;
     loan.promised = promised;
     s.transfer = 0;
@@ -353,6 +368,20 @@
         .join("; ") +
       "."
     );
+  }
+
+  /* Save the outstanding list as a desk-book note, unless the latest note is
+     already identical. */
+  function saveHandoverNote(s) {
+    const text = handoverText(s);
+    const last = s.notes[s.notes.length - 1];
+    if (last && last.text === text) {
+      s.notice = "This handover is already saved.";
+      return { ok: false };
+    }
+    s.notes.push({ phase: s.phase, text });
+    s.notice = "Outstanding list saved to the desk book.";
+    return { ok: true };
   }
 
   /* Validate saved data. Returns a clean state object, or null if the saved
@@ -441,6 +470,8 @@
     reopenLoan,
     outstanding,
     handoverText,
+    saveHandoverNote,
+    heldAtCounter,
     restore,
   };
 });

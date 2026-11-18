@@ -366,3 +366,47 @@ test("restore accepts and validates the optional mismatch field", () => {
   bad((x) => (x.mismatch = "AD-15"));
   bad((x) => (x.mismatch = null));
 });
+
+test("a unit received on a mismatch is held at the counter, not issuable", () => {
+  const s = fresh();
+  L.issue(s, slip("RQ-214", "AD-12", "Kabir Sen"));
+  L.returnLoan(s, 402, "Leela Das", "AD-15");
+  assert.equal(L.heldAtCounter(s, "AD-15"), L.getLoan(s, 402));
+  assert.equal(L.heldAtCounter(s, "AD-12"), undefined);
+  assert.equal(
+    L.validateIssue(s, slip("RQ-214", "AD-15")),
+    "AD-15 is at the counter pending a unit check on L-402.",
+  );
+  assert.ok(!L.issuableUnits(s, "RQ-214").some((a) => a.id === "AD-15"));
+  assert.ok(!L.issuableUnits(s, "").some((a) => a.id === "AD-15"));
+  // Once the right unit is returned the hold is released.
+  L.returnLoan(s, 402, "Leela Das", "AD-12");
+  assert.equal(L.heldAtCounter(s, "AD-15"), undefined);
+  assert.ok(L.issuableUnits(s, "RQ-214").some((a) => a.id === "AD-15"));
+});
+
+test("handOver rejects a promise that has already passed and a no-change hand over", () => {
+  const s = fresh();
+  L.issue(s, slip("RQ-214", "AD-12", "Kabir Sen"));
+  s.phase = 2; // Saturday 9:00 am
+  assert.equal(L.handOver(s, 402, "Leela Das", "Fri 8 pm").error, "That time has already passed.");
+  assert.equal("holder" in L.getLoan(s, 402), false);
+  assert.equal(L.handOver(s, 402, "Leela Das", "Sat 9 am").ok, true); // exactly now is allowed
+  const again = L.handOver(s, 402, "Leela Das", "Sat 9 am");
+  assert.equal(again.ok, false);
+  assert.ok(again.error.startsWith("Nothing has changed"));
+  assert.equal(L.handOver(s, 402, "Leela Das", "Sat 10 am").ok, true); // new promise is fine
+});
+
+test("saving the handover note twice does not add a duplicate", () => {
+  const s = fresh();
+  assert.equal(L.saveHandoverNote(s).ok, true);
+  assert.equal(s.notes.length, 1);
+  const again = L.saveHandoverNote(s);
+  assert.equal(again.ok, false);
+  assert.equal(s.notes.length, 1);
+  assert.equal(s.notice, "This handover is already saved.");
+  L.issue(s, slip("RQ-214", "AD-12")); // the list changed, so a new note is allowed
+  assert.equal(L.saveHandoverNote(s).ok, true);
+  assert.equal(s.notes.length, 2);
+});
