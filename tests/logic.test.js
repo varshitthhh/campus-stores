@@ -101,6 +101,7 @@ test("return records who brought it back and when; rejects strangers and repeats
   assert.equal(r.loan.returnedAt, "Saturday · 9:00 am");
   assert.equal(L.returnLoan(s, 402, "Leela Das").ok, false);
   assert.equal(L.returnLoan(s, 999, "Leela Das").ok, false);
+  assert.equal(L.getLoan(s, 402).back, true);
   assert.equal(L.openLoan(s, "AD-12"), undefined);
 });
 
@@ -222,4 +223,82 @@ test("restore rejects damaged or inconsistent saves", () => {
     d.loans[0].back = true;
     d.loans[0].returnedBy = "Mallory";
   });
+});
+
+test("returnLoan with a blank \"returned by\" fails and leaves the slip open", () => {
+  const s = fresh();
+  L.issue(s, slip("RQ-214", "AD-12"));
+  const r = L.returnLoan(s, 402, "");
+  assert.equal(r.ok, false);
+  assert.match(r.error, /who is returning/);
+  assert.equal(L.getLoan(s, 402).back, false);
+  assert.equal("returnedBy" in L.getLoan(s, 402), false);
+});
+
+test("handOver changes the holder and promise but keeps who it was issued to", () => {
+  const s = fresh();
+  L.issue(s, slip("RQ-214", "AD-12", "Kabir Sen"));
+  const loan = L.getLoan(s, 402);
+  assert.equal(L.holderOf(loan), "Kabir Sen");
+  const r = L.handOver(s, 402, "Leela Das", "Sat 9 am");
+  assert.equal(r.ok, true);
+  assert.equal(loan.who, "Kabir Sen");
+  assert.equal(L.holderOf(loan), "Leela Das");
+  assert.equal(loan.promised, "Sat 9 am");
+  assert.equal(loan.due, "Fri 8 pm"); // approved deadline unchanged
+  assert.equal(L.holderText(loan), "with Leela Das (issued to Kabir Sen), promised Sat 9 am");
+});
+
+test("handOver rejects a closed slip, an unknown person and a bad promise", () => {
+  const s = fresh();
+  L.issue(s, slip("RQ-214", "AD-12", "Kabir Sen"));
+  assert.match(L.handOver(s, 999, "Leela Das", "Sat 9 am").error, /not outstanding/);
+  assert.match(L.handOver(s, 402, "", "Sat 9 am").error, /who has the unit/);
+  assert.match(L.handOver(s, 402, "Mallory", "Sat 9 am").error, /who has the unit/);
+  assert.match(L.handOver(s, 402, "Leela Das", "").error, /promised back/);
+  assert.match(L.handOver(s, 402, "Leela Das", "Tuesday").error, /promised back/);
+  assert.match(L.handOver(s, 402, "Leela Das", "toString").error, /promised back/);
+  assert.equal("holder" in L.getLoan(s, 402), false); // nothing changed
+  L.returnLoan(s, 402, "Kabir Sen");
+  assert.match(L.handOver(s, 402, "Leela Das", "Sat 9 am").error, /not outstanding/);
+});
+
+test("overdue is still judged against the original due time, not the promise", () => {
+  const s = fresh();
+  L.issue(s, slip("RQ-214", "AD-12", "Kabir Sen"));
+  L.handOver(s, 402, "Leela Das", "Sat noon");
+  s.phase = 2;
+  assert.equal(L.isOverdue(s, L.getLoan(s, 402)), true);
+});
+
+test("handoverText names Leela and the promise", () => {
+  const s = fresh();
+  L.issue(s, slip("RQ-214", "AD-12", "Kabir Sen"));
+  L.handOver(s, 402, "Leela Das", "Sat 9 am");
+  s.phase = 2;
+  assert.ok(
+    L.handoverText(s).includes(
+      "AD-12 USB-C → HDMI adapter (RQ-214, Film Society, slip L-402, with Leela Das (issued to Kabir Sen), promised Sat 9 am, due Fri 8 pm, OVERDUE)",
+    ),
+  );
+});
+
+test("restore accepts hand-over fields, still loads old saves, rejects bad ones", () => {
+  const s = fresh();
+  L.issue(s, slip("RQ-214", "AD-12", "Kabir Sen"));
+  assert.ok(L.restore(JSON.parse(JSON.stringify(s)))); // no holder/promised: old shape
+  L.handOver(s, 402, "Leela Das", "Sat 9 am");
+  const ok = L.restore(JSON.parse(JSON.stringify(s)));
+  assert.equal(ok.loans[1].holder, "Leela Das");
+  assert.equal(ok.loans[1].promised, "Sat 9 am");
+  assert.equal(ok.transfer, 0);
+  const bad = (mutate) => {
+    const d = JSON.parse(JSON.stringify(s));
+    mutate(d.loans[1]);
+    assert.equal(L.restore(d), null);
+  };
+  bad((l) => (l.holder = "Mallory"));
+  bad((l) => (l.promised = "Tuesday"));
+  bad((l) => (l.promised = "toString"));
+  bad((l) => (l.holder = 5));
 });

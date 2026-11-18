@@ -137,7 +137,7 @@ test("return needs confirmation, shows the exact unit, and can be cancelled", ()
   assert.match(panel, /MI-09/);
   assert.match(panel, /Shure BLX/);
   assert.match(panel, /bin B3/);
-  assert.equal(a.$('[name="by"]').value, "Tara Shah"); // defaults to the holder
+  assert.equal(a.$('[name="by"]').value, ""); // nobody is preselected
   assert.equal(a.saved().loans[0].back, false);
   a.click('[data-action="cancelreturn"]');
   assert.equal(a.$("[data-return]"), null);
@@ -292,4 +292,60 @@ test("keyboard focus stays on the control after a re-render", () => {
   toggle.click();
   assert.equal(a.d.activeElement.dataset.val, "1");
   assert.equal(a.d.activeElement.getAttribute("aria-pressed"), "true");
+});
+
+test("return requires choosing who returned it; blank keeps the slip open", () => {
+  const a = boot();
+  a.tab("Loan register");
+  a.click('[data-action="return"][data-val="401"]');
+  a.submit("[data-return]");
+  const err = a.$("[data-return] [role=alert]");
+  assert.match(err.textContent, /Choose who is returning the unit/);
+  assert.equal(a.d.activeElement, err);
+  assert.ok(a.$("[data-return]")); // panel still open
+  assert.equal(a.saved().loans[0].back, false);
+  a.set("by", "Tara Shah");
+  a.submit("[data-return]");
+  assert.match(a.status(), /MI-09 returned by Tara Shah/);
+});
+
+test("7:30 hand over: Kabir -> Leela, promised Sat 9 am, shown everywhere and survives reload", () => {
+  const a = boot();
+  a.issue("RQ-214", "AD-12", "Kabir Sen");
+  a.click('[data-action="advance"]');
+  a.tab("Loan register");
+  a.click('[data-action="transfer"][data-val="402"]');
+  // both fields start blank and are required
+  assert.equal(a.$('[name="holder"]').value, "");
+  assert.equal(a.$('[name="promised"]').value, "");
+  a.submit("[data-transfer]");
+  assert.match(a.$("[data-transfer] [role=alert]").textContent, /who has the unit/);
+  a.set("holder", "Leela Das");
+  a.submit("[data-transfer]");
+  assert.match(a.$("[data-transfer] [role=alert]").textContent, /promised back/);
+  a.set("promised", "Sat 9 am");
+  a.submit("[data-transfer]");
+  const want = "with Leela Das (issued to Kabir Sen), promised Sat 9 am";
+  assert.ok(a.status().includes("AD-12 is now " + want));
+  assert.ok(a.page().includes(want)); // register
+  assert.match(a.page(), /Promised Sat 9 am/); // separate tag
+  assert.doesNotMatch(a.page(), /Overdue/); // 7:30 pm, due 8 pm
+  a.tab("Inventory");
+  assert.ok(a.page().includes("With Leela Das (issued to Kabir Sen), promised Sat 9 am (L-402"));
+  a.tab("Desk book");
+  assert.ok(a.$(".memo").textContent.includes(want));
+  a.tab("Requests");
+  a.click('[data-action="request"][data-val="RQ-214"]');
+  assert.ok(a.page().includes(want));
+
+  const b = boot({ saved: a.w.localStorage.getItem(KEY) });
+  b.tab("Loan register");
+  assert.ok(b.page().includes(want));
+  assert.equal(b.saved().loans[1].who, "Kabir Sen"); // original issuee kept
+
+  // Saturday 9:00: overdue is judged against the club's due time, not the promise
+  b.click('[data-action="advance"]');
+  assert.match(b.status(), /1 slip is overdue/);
+  assert.match(b.page(), /Overdue/);
+  assert.match(b.page(), /Promised Sat 9 am/);
 });

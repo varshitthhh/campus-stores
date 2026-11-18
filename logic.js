@@ -120,6 +120,7 @@
     editing: false,
     draft: blankDraft(),
     pending: 0,
+    transfer: 0,
     error: "",
     onlyOpen: true,
     notice: "Sample shift · All records are fictional.",
@@ -134,6 +135,15 @@
   const openLoan = (s, assetId) =>
     s.loans.find((l) => l.asset === assetId && !l.back);
   const deskTime = (s) => shifts[s.phase].at;
+  /* Who has the unit now. `who` stays the person it was issued to. */
+  const holderOf = (l) => l.holder ?? l.who;
+  /* "with Leela Das (issued to Kabir Sen), promised Sat 9 am" */
+  function holderText(l) {
+    let t = "with " + holderOf(l);
+    if (holderOf(l) !== l.who) t += " (issued to " + l.who + ")";
+    if (l.promised) t += ", promised " + l.promised;
+    return t;
+  }
 
   /* A loan is overdue once desk time has passed its due time. */
   function isOverdue(s, loan) {
@@ -199,7 +209,7 @@
     const unit = getAsset(asset);
     if (!unit) return "Choose the unit that is leaving the desk.";
     if (!people.includes(who)) return "Choose who is collecting the unit.";
-    if (!(due in dueTimes)) return "Choose when it is due back.";
+    if (!Object.hasOwn(dueTimes, due)) return "Choose when it is due back.";
     if (unit.repair)
       return unit.id + " is in repair and cannot be issued.";
     const held = openLoan(s, unit.id);
@@ -255,6 +265,22 @@
     return { ok: true, loan };
   }
 
+  /* Pass an open slip to someone else with a promised return time. */
+  function handOver(s, num, holder, promised) {
+    const loan = getLoan(s, num);
+    if (!loan || loan.back) return { ok: false, error: "That slip is not outstanding." };
+    if (!people.includes(holder))
+      return { ok: false, error: "Choose who has the unit now." };
+    if (!Object.hasOwn(dueTimes, promised))
+      return { ok: false, error: "Choose when it is promised back." };
+    loan.holder = holder;
+    loan.promised = promised;
+    s.transfer = 0;
+    s.notice =
+      loan.asset + " is now " + holderText(loan) + " (slip L-" + loan.num + ").";
+    return { ok: true, loan };
+  }
+
   /* Undo a mistaken return, unless the unit has been issued again since. */
   function reopenLoan(s, num) {
     const loan = getLoan(s, num);
@@ -303,8 +329,8 @@
             getReq(l.req).club +
             ", slip L-" +
             l.num +
-            ", with " +
-            l.who +
+            ", " +
+            holderText(l) +
             ", due " +
             l.due +
             (isOverdue(s, l) ? ", OVERDUE" : "") +
@@ -340,8 +366,10 @@
     for (const l of d.loans) {
       if (!l || !getReq(l.req) || !getAsset(l.asset)) return null;
       if (!Number.isInteger(l.num) || l.num < 1 || nums.has(l.num)) return null;
-      if (!people.includes(l.who) || !(l.due in dueTimes)) return null;
+      if (!people.includes(l.who) || !Object.hasOwn(dueTimes, l.due)) return null;
       if (typeof l.back !== "boolean") return null;
+      if (l.holder !== undefined && !people.includes(l.holder)) return null;
+      if (l.promised !== undefined && !Object.hasOwn(dueTimes, l.promised)) return null;
       if (l.back) {
         if (l.returnedBy !== undefined && !people.includes(l.returnedBy))
           return null;
@@ -381,6 +409,9 @@
     getAsset,
     getReq,
     getLoan,
+    holderOf,
+    holderText,
+    handOver,
     openLoan,
     openForType,
     isOverdue,

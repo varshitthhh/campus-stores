@@ -11,7 +11,8 @@
     ["Desk book", "messages-square"],
   ];
   let s = L.original();
-  const { getAsset, getReq, openLoan, isOverdue } = L;
+  let tdraft = {}; // hand-over fields kept across a failed submit
+  const { getAsset, getReq, openLoan, isOverdue, holderText } = L;
   const esc = (x) =>
     String(x).replace(
       /[&<>"']/g,
@@ -67,6 +68,14 @@
     '<span class="tag' + (kind ? " " + kind : "") + '">' + esc(t) + "</span>";
   const overdueBadge = (loan) =>
     isOverdue(s, loan) ? badge("Overdue", "warn") : "";
+  const promiseBadge = (loan) =>
+    loan.promised ? badge("Promised " + loan.promised) : "";
+  const errorBox = () =>
+    s.error
+      ? '<p class="formerror" role="alert" tabindex="-1" data-error>' +
+        esc(s.error) +
+        "</p>"
+      : "";
   const first = (list) => list[0];
 
   function requestPage() {
@@ -129,7 +138,7 @@
       detail =
         badge("Out", isOverdue(s, l) ? "warn" : "") +
         " <small>" +
-        esc(l.asset + " · with " + l.who + " · due " + l.due) +
+        esc(l.asset + " · " + holderText(l) + " · due " + l.due) +
         "</small>";
       action = btn("Record return", "return", String(l.num));
     } else {
@@ -175,10 +184,12 @@
           " · " +
           a.bin +
           (loan
-            ? " · With " + loan.who + " (L-" + loan.num + ", due " + loan.due + ")"
+            ? " · " +
+              holderText(loan).replace(/^with/, "With") +
+              " (L-" + loan.num + ", due " + loan.due + ")"
             : ""),
         badge(status, status === "On shelf" ? "good" : "") +
-          (loan ? overdueBadge(loan) : ""),
+          (loan ? promiseBadge(loan) + overdueBadge(loan) : ""),
       );
     }
     return html;
@@ -254,7 +265,7 @@
     const a = getAsset(l.asset);
     const r = getReq(l.req);
     return (
-      '<form data-return class="record confirm" data-num="' +
+      '<form data-return novalidate class="record confirm" data-num="' +
       l.num +
       '"><strong>Return slip L-' +
       l.num +
@@ -263,16 +274,42 @@
       "</strong><p>" +
       esc(a.type + " · " + a.model + " · bin " + a.bin) +
       "</p><p>" +
-      esc(l.req + " · " + r.club + " · issued to " + l.who + " · due " + l.due) +
+      esc(l.req + " · " + r.club + " · " + holderText(l) + " · due " + l.due) +
       " " +
       overdueBadge(l) +
-      '</p><label><span>Returned by</span><select name="by">' +
-      opts(
-        people.map((p) => [p, p]),
-        l.who,
-      ) +
+      "</p>" +
+      errorBox() +
+      '<label><span>Returned by</span><select name="by"><option value="">Select…</option>' +
+      opts(people.map((p) => [p, p])) +
       '</select></label><div class="buttons"><button type="submit" class="primary">Confirm return</button>' +
       btn("Cancel", "cancelreturn") +
+      "</div></form>"
+    );
+  }
+  function transferPanel(l) {
+    return (
+      '<form data-transfer novalidate class="record confirm" data-num="' +
+      l.num +
+      '"><strong>Hand over slip L-' +
+      l.num +
+      " · " +
+      esc(l.asset) +
+      "</strong><p>" +
+      esc(getAsset(l.asset).type + " · " + holderText(l)) +
+      "</p>" +
+      errorBox() +
+      '<div class="form"><label><span>Now with</span><select name="holder"><option value="">Select…</option>' +
+      opts(
+        people.map((p) => [p, p]),
+        tdraft.holder,
+      ) +
+      '</select></label><label><span>Promised back</span><select name="promised"><option value="">Select…</option>' +
+      opts(
+        L.dueOptions.map((d) => [d, d]),
+        tdraft.promised,
+      ) +
+      '</select></label></div><div class="buttons"><button type="submit" class="primary">Save hand over</button>' +
+      btn("Cancel", "canceltransfer") +
       "</div></form>"
     );
   }
@@ -310,11 +347,15 @@
         html += returnPanel(l);
         continue;
       }
+      if (l.num === s.transfer && !l.back) {
+        html += transferPanel(l);
+        continue;
+      }
       html += row(
         "L-" + l.num + " · " + l.asset,
         l.req +
           " · " +
-          l.who +
+          (l.back ? "issued to " + l.who : holderText(l)) +
           " · Due " +
           l.due +
           (l.back && l.returnedBy
@@ -322,7 +363,10 @@
             : ""),
         l.back
           ? badge("Returned") + btn("Reopen", "reopen", String(l.num))
-          : overdueBadge(l) + btn("Record return", "return", String(l.num)),
+          : promiseBadge(l) +
+              overdueBadge(l) +
+              btn("Hand over", "transfer", String(l.num)) +
+              btn("Record return", "return", String(l.num)),
       );
     }
     return html;
@@ -347,8 +391,8 @@
                 esc(l.req + " " + getReq(l.req).club) +
                 " · slip L-" +
                 l.num +
-                " · with " +
-                esc(l.who) +
+                " · " +
+                esc(holderText(l)) +
                 " · due " +
                 esc(l.due) +
                 " " +
@@ -476,6 +520,7 @@
         s.tab = v;
         s.editing = false;
         s.pending = 0;
+        s.transfer = 0;
         s.error = "";
         break;
       case "close":
@@ -512,12 +557,33 @@
         s.tab = "Loan register";
         s.onlyOpen = true;
         s.editing = false;
+        s.transfer = 0;
+        s.error = "";
         s.pending = l.num;
         focus = '[name="by"]';
         break;
       }
       case "cancelreturn":
         s.pending = 0;
+        s.error = "";
+        break;
+      case "transfer": {
+        const l = L.getLoan(s, v);
+        if (!l || l.back) return;
+        s.tab = "Loan register";
+        s.onlyOpen = true;
+        s.editing = false;
+        s.pending = 0;
+        s.error = "";
+        s.transfer = l.num;
+        tdraft = {};
+        focus = '[name="holder"]';
+        break;
+      }
+      case "canceltransfer":
+        tdraft = {};
+        s.transfer = 0;
+        s.error = "";
         break;
       case "reopen": {
         const res = L.reopenLoan(s, v);
@@ -559,8 +625,22 @@
     }
     if (f.matches("[data-return]")) {
       const res = L.returnLoan(s, Number(f.dataset.num), form.get("by"));
-      if (!res.ok) s.notice = res.error;
-      commit();
+      s.error = res.ok ? "" : res.error;
+      commit(null, res.ok ? "" : "[data-error]");
+      return;
+    }
+    if (f.matches("[data-transfer]")) {
+      const res = L.handOver(
+        s,
+        Number(f.dataset.num),
+        form.get("holder"),
+        form.get("promised"),
+      );
+      s.error = res.ok ? "" : res.error;
+      tdraft = res.ok
+        ? {}
+        : { holder: form.get("holder") || "", promised: form.get("promised") || "" };
+      commit(null, res.ok ? "" : "[data-error]");
       return;
     }
     if (!f.matches("[data-issue]")) return;

@@ -16,19 +16,45 @@ Each browser stores its own sample shift locally when browser storage is availab
 
 ## My changes (for reviewers)
 
-**The one moment I would change.** At pickup the desk is asked "can he leave with everything he needs?", but the product could not answer it. Requests showed no status, so the one easy-to-miss item, the USB-C adapter for a USB-C-only laptop, was invisible. The next morning it also made the handover guesswork: the register listed slips but nothing said which unit was outstanding, with whom, or whether it was late.
+### Would I keep it?
 
-**What I changed, and why these three:**
+Yes, with one change: make the desk's records say who actually has each unit and when it is promised back.
 
-1. **Request fulfilment view.** Every request now shows per-item status (not issued, out with whom and due when, returned by whom). The list shows a roll-up ("All issued", "Partly returned"). Each unissued item has a one-click **Issue AD-12** shortcut that opens a slip with request, unit and return time pre-filled. This answers the pickup question at a glance.
-2. **Safer returns and a computed handover.** **Record return** now opens a confirmation showing the exact unit, model, bin and holder, and asks who is actually returning it (Leela, not Kabir, brings the adapter back). The slip keeps who and when, and a mistaken return can be reopened. Slips past their due time against desk time are marked **Overdue**. The Desk book shows a live "Still outstanding" list from the register, which can be saved as a handover note, replacing guesswork with the answer: the adapter on L-404, overdue, with Kabir.
-3. **Reliable forms and state.** Validation errors are shown in the form (announced to screen readers, focus moved to them) instead of vanishing on the next repaint. The unit list only offers approved, free, working units, and the return time defaults from the request, with a warning if you override it. Saved-state restore is stricter, so a stale or damaged save falls back to a fresh shift instead of rendering a broken screen (the inventory filter used to blank out). Keyboard focus survives re-renders.
+### What it handles well
 
-**Decisions I made on purpose.** Returns ask for confirmation because closing the wrong slip is the costly mistake, but reopening is one click so it never traps anyone. A later-than-approved return time is flagged, not blocked, because desk staff may have agreed it with the club. I did not add accounts, a backend or a quantity model; none is needed for this job.
+The issue slip refuses equipment outside the approved request, and a second unit of a type already on loan, and it says why. This was in the original app, not something I added. In my shift on the original app, while issuing the Film Society kit, trying a second adapter was refused with "The approved quantity of this equipment type is already on loan", and trying a camera was refused with "This equipment type is outside the approved request". Both stop a wrong slip at the counter instead of at the handover. My version keeps those rules but also hides ineligible units from the unit list once a request is chosen, so the mistake is harder to make in the first place.
 
-**What I would watch at a real counter.** Count how often staff open the request form before handing over the kit, and how many slips are still open at the morning handover that nobody on the new shift knew about. If the confirmation step adds seconds to returns with no fewer wrong closures, I would drop it for returns of a single unit.
+### What I would change
 
-**Code layout.** Rules and sample data live in `logic.js` (no DOM, shared by the app and tests). `app.js` renders and wires events. The saved-state key and version are unchanged; older saves still load.
+The desk could not answer "can he leave with everything he needs?", and the loan record only knew one person per unit. At 7:30 pm Kabir says Leela has the adapter and will bring it at 9. The app could only keep Kabir as the holder, so the morning handover would point at the wrong person.
+
+### Walkthrough: same shift, before and after
+
+- **3:45 pm pickup.** Before: three separate slips, with nothing showing what was still missing. After: the request shows each approved item as Not issued, Out, or Returned, with a one-click Issue button that fills in the slip.
+- **7:30 pm partial return.** Before: return the projector and speaker; the adapter stays on a slip in Kabir's name. After: the return asks who is bringing it back and records it. **Hand over** sets the adapter as "with Leela Das (issued to Kabir Sen), promised Sat 9 am".
+- **9:00 am handover.** Before: guess which open slip is the adapter and who has it. After: the Desk book lists what is still outstanding with the holder and promise, and the adapter is marked Overdue against the club's Fri 8 pm deadline. Leela returns it and "Returned by" is chosen explicitly, never preselected.
+
+### What I kept
+
+The one-slip-per-unit register, the request validation, the local-only design, and the free-text desk book.
+
+### What I deliberately did not build
+
+Bulk issue, because it would speed up the step where checking each unit matters. Accounts, a backend, and quantities, which this job does not need.
+
+### Known limits
+
+- The app does not verify which physical adapter came back. AD-12 and AD-15 sit in the same bin. Recording a mismatch without overwriting the slip is my next step.
+- Reopening a returned slip still clears the earlier return details.
+- Tested in jsdom, plus one headless-browser load check. No manual mobile or screen-reader pass.
+
+### One observation at a real counter
+
+At each morning handover, count the open slips the incoming shift finds that the handover note did not mention, or that named the wrong holder. If the change works, that number should drop towards zero.
+
+### Code layout
+
+Rules and sample data live in `logic.js` (no DOM, shared by the app and tests). `app.js` renders and wires events. The saved-state key and version are unchanged; older saves still load.
 
 ## Tests
 
@@ -39,7 +65,7 @@ npm install
 npm test
 ```
 
-`tests/logic.test.js` covers the rules (issue validation, fulfilment, overdue, returns, reopen, restore). `tests/app.test.js` drives the real page end to end: the full pickup to return story, validation errors, persistence, blocked storage, and markup injection.
+The suite has 42 tests. `tests/logic.test.js` covers the rules (issue validation, fulfilment, overdue, returns, reopen, restore). `tests/app.test.js` drives the real page end to end: the full pickup to return story, validation errors, persistence, blocked storage, and markup injection.
 
 ## Source
 
