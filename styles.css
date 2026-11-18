@@ -419,6 +419,12 @@ body > main {
   #campus-stores .mast {
     padding: 12px;
   }
+  #campus-stores .row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  #campus-stores .rowend {
+    justify-content: flex-start;
+  }
   #campus-stores .examstrip,
   #campus-stores .shift {
     padding: 9px 12px;

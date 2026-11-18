@@ -58,7 +58,7 @@ Rules and sample data live in `logic.js` (no DOM, shared by the app and tests). 
 
 ## Tests
 
-The app itself needs nothing installed. The tests use Node 20+ and one dev dependency (jsdom).
+The app itself needs nothing installed. The tests need Node 22 or newer (the `npm test` script relies on `node --test` expanding a file glob) and one dev dependency (jsdom).
 
 ```sh
 npm install
