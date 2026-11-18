@@ -1,119 +1,17 @@
 (() => {
   const storageKey = "campus-stores.shift.v1";
+  const L = window.CampusLogic;
+  const { requests, assets, people, shifts, tabs } = L;
   const root = document.getElementById("campus-stores");
   const q = (selector) => root.querySelector(selector);
-  const requests = [
-    {
-      id: "RQ-214",
-      club: "Film Society",
-      event: "Courtyard screening",
-      owner: "Isha Rao",
-      due: "Fri 8 pm",
-      items: ["HDMI projector", "Portable speaker", "USB-C → HDMI adapter"],
-      note: "Playback is from a USB-C-only laptop. The host will collect at 4 pm.",
-    },
-    {
-      id: "RQ-209",
-      club: "Debate Union",
-      event: "Finals rehearsal",
-      owner: "Tara Shah",
-      due: "Sat 10 am",
-      items: ["Wireless microphone"],
-      note: "Rehearsal runs into the evening.",
-    },
-    {
-      id: "RQ-217",
-      club: "Photo Circle",
-      event: "Street portrait walk",
-      owner: "Dev Menon",
-      due: "Sat noon",
-      items: ["Digital camera"],
-      note: "Collection on Saturday morning.",
-    },
-  ];
-  const assets = [
-    { id: "PR-04", type: "HDMI projector", model: "BenQ MH550", bin: "A2" },
-    {
-      id: "PR-06",
-      type: "HDMI projector",
-      model: "Epson EB-X49",
-      bin: "Workshop",
-      repair: true,
-    },
-    { id: "SP-02", type: "Portable speaker", model: "JBL Eon One", bin: "B1" },
-    { id: "SP-05", type: "Portable speaker", model: "Bose S1", bin: "B2" },
-    {
-      id: "AD-12",
-      type: "USB-C → HDMI adapter",
-      model: "Belkin AVC002",
-      bin: "C4",
-    },
-    {
-      id: "AD-15",
-      type: "USB-C → HDMI adapter",
-      model: "Anker A8312",
-      bin: "C4",
-    },
-    { id: "MI-09", type: "Wireless microphone", model: "Shure BLX", bin: "B3" },
-    { id: "CA-03", type: "Digital camera", model: "Sony A6400", bin: "D2" },
-  ];
-  const people = [
-    "Isha Rao",
-    "Kabir Sen",
-    "Leela Das",
-    "Tara Shah",
-    "Dev Menon",
-  ];
-  const shifts = [
-    {
-      time: "Friday · 3:45 pm",
-      title: "Pickup at the counter",
-      text: "Kabir is here for the Film Society screening. The film starts at four. Can he leave with everything he needs?",
-      next: "Move to return time",
-    },
-    {
-      time: "Friday · 7:30 pm",
-      title: "The kit comes back in pieces",
-      text: "Kabir has brought back the projector and speaker. “Leela still has the adapter. She’ll drop it off tomorrow at nine.” Take the return and hand over to the morning shift.",
-      next: "Move to next morning",
-    },
-    {
-      time: "Saturday · 9:00 am",
-      title: "Morning shift",
-      text: "You’ve just taken over. Leela walks in with an adapter. Work out what was outstanding from the screening and close the loan for the right item.",
-    },
-  ];
   const pages = [
     ["Requests", "clipboard-list"],
     ["Inventory", "package"],
     ["Loan register", "book-open"],
     ["Desk book", "messages-square"],
   ];
-  const original = () => ({
-    version: 1,
-    tab: "Requests",
-    phase: 0,
-    selected: "",
-    filter: "All items",
-    loans: [
-      {
-        num: 401,
-        req: "RQ-209",
-        asset: "MI-09",
-        who: "Tara Shah",
-        due: "Sat 10 am",
-        back: false,
-      },
-    ],
-    notes: [],
-    editing: false,
-    onlyOpen: true,
-    notice: "Sample shift · All records are fictional.",
-  });
-  let s = original();
-  const getAsset = (id) => assets.find((x) => x.id === id);
-  const getReq = (id) => requests.find((x) => x.id === id);
-  const out = (id) => s.loans.find((l) => l.asset === id && !l.back);
+  let s = L.original();
+  const { getAsset, getReq, openLoan, isOverdue } = L;
   const esc = (x) =>
     String(x).replace(
       /[&<>"']/g,
@@ -126,9 +24,18 @@
           "'": "&#39;",
         })[c],
     );
-  const opts = (list) =>
+  const opts = (list, selected = "") =>
     list
-      .map(([v, t]) => '<option value="' + esc(v) + '">' + esc(t) + "</option>")
+      .map(
+        ([v, t]) =>
+          '<option value="' +
+          esc(v) +
+          '"' +
+          (v === selected ? " selected" : "") +
+          ">" +
+          esc(t) +
+          "</option>",
+      )
       .join("");
   const btn = (label, act, val = "", style = "") =>
     '<button type="button" data-action="' +
@@ -142,9 +49,9 @@
     "</button>";
   const head = (title, sub, control = "") =>
     '<div class="sectionhead"><div><h2>' +
-    title +
+    esc(title) +
     "</h2><small>" +
-    sub +
+    esc(sub) +
     "</small></div>" +
     control +
     "</div>";
@@ -153,11 +60,15 @@
     esc(label) +
     "</strong><small>" +
     esc(sub) +
-    "</small></div><div>" +
+    "</small></div><div class=\"rowend\">" +
     right +
     "</div></div>";
-  const badge = (t, good = false) =>
-    '<span class="tag' + (good ? " good" : "") + '">' + esc(t) + "</span>";
+  const badge = (t, kind = "") =>
+    '<span class="tag' + (kind ? " " + kind : "") + '">' + esc(t) + "</span>";
+  const overdueBadge = (loan) =>
+    isOverdue(s, loan) ? badge("Overdue", "warn") : "";
+  const first = (list) => list[0];
+
   function requestPage() {
     let html = head(
       "Approved requests",
@@ -165,34 +76,82 @@
     );
     if (s.selected) {
       const r = getReq(s.selected);
+      const f = L.fulfilment(s, r);
       html +=
         btn("Back to list", "close") +
         '<div class="record"><small>' +
-        r.id +
+        esc(r.id) +
         " · Approved</small><h3>" +
-        r.event +
+        esc(r.event) +
         "</h3><p>" +
-        r.club +
+        esc(r.club) +
         " · Filed by " +
-        r.owner +
+        esc(r.owner) +
         "</p><p><b>Return by</b> " +
-        r.due +
-        "</p><p><b>Approved equipment</b></p><ul>" +
-        r.items.map((x) => "<li>" + x + "</li>").join("") +
+        esc(r.due) +
+        "</p><p><b>Approved equipment</b> " +
+        badge(f.label, f.done ? "good" : "") +
+        (f.overdue ? " " + badge("Overdue", "warn") : "") +
+        '</p><ul class="lines">' +
+        f.lines.map((x) => lineItem(r, x)).join("") +
         "</ul><p>" +
-        r.note +
+        esc(r.note) +
         "</p></div>";
     } else
       html += requests
-        .map((r) =>
-          row(
+        .map((r) => {
+          const f = L.fulfilment(s, r);
+          return row(
             r.event,
-            r.id + " · " + r.club,
-            btn("View form", "request", r.id),
-          ),
-        )
+            r.id + " · " + r.club + " · Return by " + r.due,
+            badge(f.label, f.done ? "good" : "") +
+              (f.overdue ? badge("Overdue", "warn") : "") +
+              btn("View form", "request", r.id),
+          );
+        })
         .join("");
     return html;
+  }
+  /* One approved item on a request, with its status and the next action. */
+  function lineItem(r, line) {
+    const l = line.loan;
+    let detail = "",
+      action = "";
+    if (line.status === "not-issued") {
+      const unit = first(
+        L.issuableUnits(s, r.id).filter((a) => a.type === line.type),
+      );
+      detail = badge("Not issued");
+      action = unit
+        ? btn("Issue " + unit.id, "issueunit", r.id + "|" + unit.id)
+        : "<small>No unit available</small>";
+    } else if (line.status === "out") {
+      detail =
+        badge("Out", isOverdue(s, l) ? "warn" : "") +
+        " <small>" +
+        esc(l.asset + " · with " + l.who + " · due " + l.due) +
+        "</small>";
+      action = btn("Record return", "return", String(l.num));
+    } else {
+      detail =
+        badge("Returned", "good") +
+        " <small>" +
+        esc(
+          l.asset +
+            (l.returnedBy
+              ? " · returned by " + l.returnedBy + " · " + l.returnedAt
+              : ""),
+        ) +
+        "</small>";
+    }
+    return (
+      '<li><span class="linetype">' +
+      esc(line.type) +
+      "</span> " +
+      detail +
+      (action ? " " + action : "") +
+      "</li>"
+    );
   }
   function inventory() {
     let html = head(
@@ -202,23 +161,120 @@
     html +=
       '<div class="buttons"><label>Show <select data-filter>' +
       opts(
-        ["All items", "On shelf", "On loan", "In repair"].map((f) => [f, f]),
+        L.filters.map((f) => [f, f]),
+        s.filter,
       ) +
       "</select></label></div>";
     for (const a of assets) {
-      const status = a.repair
-        ? "In repair"
-        : out(a.id)
-          ? "On loan"
-          : "On shelf";
+      const loan = openLoan(s, a.id);
+      const status = a.repair ? "In repair" : loan ? "On loan" : "On shelf";
       if (s.filter !== "All items" && s.filter !== status) continue;
       html += row(
         a.id + " · " + a.type,
-        a.model + " · " + a.bin,
-        badge(status, status === "On shelf"),
+        a.model +
+          " · " +
+          a.bin +
+          (loan
+            ? " · With " + loan.who + " (L-" + loan.num + ", due " + loan.due + ")"
+            : ""),
+        badge(status, status === "On shelf" ? "good" : "") +
+          (loan ? overdueBadge(loan) : ""),
       );
     }
     return html;
+  }
+  function issueForm() {
+    const d = s.draft;
+    const r = getReq(d.req);
+    const units = r ? L.issuableUnits(s, r.id) : [];
+    const select = (label, key, options, value, disabled = false) =>
+      "<label><span>" +
+      label +
+      '</span><select name="' +
+      key +
+      '" data-draft' +
+      (disabled ? " disabled" : "") +
+      '><option value="">Select…</option>' +
+      opts(options, value) +
+      "</select></label>";
+    let hint = "";
+    if (r && !units.length)
+      hint =
+        '<p class="hint">Everything approved on ' +
+        esc(r.id) +
+        " is already out.</p>";
+    else if (r && d.due && d.due !== r.due)
+      hint =
+        '<p class="hint warn">' +
+        esc(r.id) +
+        " is approved to " +
+        esc(r.due) +
+        ". You chose " +
+        esc(d.due) +
+        ".</p>";
+    return (
+      '<form data-issue novalidate>' +
+      (s.error
+        ? '<p class="formerror" role="alert" tabindex="-1" data-error>' +
+          esc(s.error) +
+          "</p>"
+        : "") +
+      '<div class="form">' +
+      select(
+        "Approved request",
+        "req",
+        requests.map((x) => [x.id, x.id + " · " + x.club]),
+        d.req,
+      ) +
+      select(
+        r ? "Unit leaving the desk" : "Unit leaving the desk (pick a request first)",
+        "asset",
+        units.map((a) => [a.id, a.id + " · " + a.type + " · " + a.bin]),
+        d.asset,
+        !r,
+      ) +
+      select(
+        "Collected by",
+        "who",
+        people.map((p) => [p, p]),
+        d.who,
+      ) +
+      select(
+        "Return by",
+        "due",
+        L.dueOptions.map((x) => [x, x]),
+        d.due,
+      ) +
+      "</div>" +
+      hint +
+      '<button type="submit" class="primary">Save issue slip</button></form>'
+    );
+  }
+  function returnPanel(l) {
+    const a = getAsset(l.asset);
+    const r = getReq(l.req);
+    return (
+      '<form data-return class="record confirm" data-num="' +
+      l.num +
+      '"><strong>Return slip L-' +
+      l.num +
+      " · " +
+      esc(l.asset) +
+      "</strong><p>" +
+      esc(a.type + " · " + a.model + " · bin " + a.bin) +
+      "</p><p>" +
+      esc(l.req + " · " + r.club + " · issued to " + l.who + " · due " + l.due) +
+      " " +
+      overdueBadge(l) +
+      '</p><label><span>Returned by</span><select name="by">' +
+      opts(
+        people.map((p) => [p, p]),
+        l.who,
+      ) +
+      '</select></label><div class="buttons"><button type="submit" class="primary">Confirm return</button>' +
+      btn("Cancel", "cancelreturn") +
+      "</div></form>"
+    );
   }
   function register() {
     let html = head(
@@ -228,42 +284,7 @@
         ? btn("Cancel", "cancel")
         : btn("New issue slip", "new", "", "primary"),
     );
-    if (s.editing) {
-      const available = assets.filter((a) => !a.repair && !out(a.id));
-      const select = (label, key, options) =>
-        "<label><span>" +
-        label +
-        '</span><select name="' +
-        key +
-        '" required><option value="">Select…</option>' +
-        opts(options) +
-        "</select></label>";
-      return (
-        html +
-        '<form data-issue><div class="form">' +
-        select(
-          "Approved request",
-          "req",
-          requests.map((r) => [r.id, r.id + " · " + r.club]),
-        ) +
-        select(
-          "Unit leaving the desk",
-          "asset",
-          available.map((a) => [a.id, a.id + " · " + a.type]),
-        ) +
-        select(
-          "Collected by",
-          "who",
-          people.map((p) => [p, p]),
-        ) +
-        select(
-          "Return by",
-          "due",
-          ["Fri 8 pm", "Sat 9 am", "Sat 10 am", "Sat noon"].map((d) => [d, d]),
-        ) +
-        '</div><button type="submit" class="primary">Save issue slip</button></form>'
-      );
-    }
+    if (s.editing) return html + issueForm();
     html +=
       '<div class="buttons">' +
       ["Outstanding", "All slips"]
@@ -284,14 +305,26 @@
       .slice()
       .reverse();
     if (!shown.length) html += "<p>No outstanding slips.</p>";
-    for (const l of shown)
+    for (const l of shown) {
+      if (l.num === s.pending && !l.back) {
+        html += returnPanel(l);
+        continue;
+      }
       html += row(
         "L-" + l.num + " · " + l.asset,
-        l.req + " · " + l.who + " · Due " + l.due,
+        l.req +
+          " · " +
+          l.who +
+          " · Due " +
+          l.due +
+          (l.back && l.returnedBy
+            ? " · Returned by " + l.returnedBy + " · " + l.returnedAt
+            : ""),
         l.back
-          ? badge("Returned")
-          : btn("Record return", "return", String(l.num)),
+          ? badge("Returned") + btn("Reopen", "reopen", String(l.num))
+          : overdueBadge(l) + btn("Record return", "return", String(l.num)),
       );
+    }
     return html;
   }
   function deskbook() {
@@ -299,6 +332,34 @@
       "Desk book",
       "Messages from clubs and notes for the next shift",
     );
+    const open = L.outstanding(s);
+    html +=
+      '<div class="record memo"><small>Still outstanding · from the loan register</small>' +
+      (open.length
+        ? '<ul class="lines">' +
+          open
+            .map((l) => {
+              const a = getAsset(l.asset);
+              return (
+                "<li><b>" +
+                esc(l.asset + " " + a.type) +
+                "</b> · " +
+                esc(l.req + " " + getReq(l.req).club) +
+                " · slip L-" +
+                l.num +
+                " · with " +
+                esc(l.who) +
+                " · due " +
+                esc(l.due) +
+                " " +
+                overdueBadge(l) +
+                "</li>"
+              );
+            })
+            .join("")
+        : "<p>Nothing outstanding. Every issued unit is back.</p>") +
+      btn("Save as handover note", "handover") +
+      "</div>";
     const entries = [
       [
         "Friday · 3:20 pm",
@@ -339,7 +400,23 @@
     "Loan register": register,
     "Desk book": deskbook,
   };
-  function paint() {
+  /* Selector for the focused control, so focus survives a full re-render. */
+  function focusKey(el) {
+    if (!el || el === document.body || !root.contains(el)) return null;
+    if (el.dataset.action)
+      return (
+        '[data-action="' +
+        el.dataset.action +
+        '"][data-val="' +
+        CSS.escape(el.dataset.val ?? "") +
+        '"]'
+      );
+    if (el.name) return '[name="' + el.name + '"]';
+    if (el.hasAttribute("data-filter")) return "[data-filter]";
+    return null;
+  }
+  function paint(focus) {
+    const key = focusKey(document.activeElement);
     const phase = shifts[s.phase];
     q("[data-clock]").textContent = phase.time;
     q("[data-shift-title]").textContent = phase.title;
@@ -362,12 +439,13 @@
       )
       .join("");
     q("[data-page]").innerHTML = screens[s.tab]();
-    if (q("[data-filter]")) q("[data-filter]").value = s.filter;
     q("[data-status]").textContent = s.notice;
+    const target = (focus && q(focus)) || (key && q(key));
+    if (target) target.focus();
   }
-  function commit(msg) {
+  function commit(msg, focus) {
     if (msg) s.notice = msg;
-    paint();
+    paint(focus);
     try {
       localStorage.setItem(storageKey, JSON.stringify(s));
     } catch {
@@ -379,17 +457,26 @@
     const b = e.target.closest("[data-action]");
     if (!b) return;
     const v = b.dataset.val;
+    let focus;
     switch (b.dataset.action) {
       case "restart":
-        s = original();
+        s = L.original();
         break;
-      case "advance":
+      case "advance": {
         if (s.phase < 2) s.phase++;
-        s.notice = "Shift time updated.";
+        const late = L.outstanding(s).filter((l) => isOverdue(s, l)).length;
+        s.notice =
+          "Desk time is now " +
+          shifts[s.phase].time +
+          "." +
+          (late ? " " + late + (late === 1 ? " slip is" : " slips are") + " overdue." : "");
         break;
+      }
       case "tab":
         s.tab = v;
         s.editing = false;
+        s.pending = 0;
+        s.error = "";
         break;
       case "close":
         s.selected = "";
@@ -399,26 +486,63 @@
         break;
       case "new":
         s.editing = true;
+        s.draft = L.blankDraft();
+        s.error = "";
+        focus = '[name="req"]';
         break;
+      case "issueunit": {
+        const [req, asset] = v.split("|");
+        s.tab = "Loan register";
+        s.editing = true;
+        s.error = "";
+        s.draft = { req, asset, who: "", due: getReq(req).due };
+        focus = '[name="who"]';
+        break;
+      }
       case "cancel":
         s.editing = false;
+        s.error = "";
         break;
       case "scope":
         s.onlyOpen = v === "0";
         break;
       case "return": {
-        const l = s.loans.find((l) => l.num === Number(v));
+        const l = L.getLoan(s, v);
         if (!l || l.back) return;
-        l.back = true;
-        s.notice = l.asset + " returned to stock. Slip L-" + l.num + " closed.";
+        s.tab = "Loan register";
+        s.onlyOpen = true;
+        s.editing = false;
+        s.pending = l.num;
+        focus = '[name="by"]';
         break;
       }
+      case "cancelreturn":
+        s.pending = 0;
+        break;
+      case "reopen": {
+        const res = L.reopenLoan(s, v);
+        if (!res.ok) s.notice = res.error;
+        break;
+      }
+      case "handover":
+        s.notes.push({ phase: s.phase, text: L.handoverText(s) });
+        s.notice = "Outstanding list saved to the desk book.";
+        break;
     }
-    commit();
+    commit(null, focus);
   });
   root.addEventListener("change", (e) => {
     if (e.target.matches("[data-filter]")) {
       s.filter = e.target.value;
+      commit();
+    } else if (e.target.matches("[data-draft]")) {
+      const { name, value } = e.target;
+      s.draft[name] = value;
+      if (name === "req") {
+        s.draft.asset = "";
+        s.draft.due = getReq(value)?.due ?? "";
+      }
+      s.error = "";
       commit();
     }
   });
@@ -433,63 +557,23 @@
       commit("Handover note saved.");
       return;
     }
+    if (f.matches("[data-return]")) {
+      const res = L.returnLoan(s, Number(f.dataset.num), form.get("by"));
+      if (!res.ok) s.notice = res.error;
+      commit();
+      return;
+    }
     if (!f.matches("[data-issue]")) return;
-    const [req, asset, who, due] = ["req", "asset", "who", "due"].map((k) =>
-      form.get(k),
-    );
-    const unit = getAsset(asset),
-      r = getReq(req);
-    if (!r || !unit || unit.repair || out(asset) || !people.includes(who))
-      return;
-    if (!r.items.includes(unit.type)) {
-      q("[data-status]").textContent =
-        "This equipment type is outside the approved request. Choose an approved unit.";
-      return;
-    }
-    if (
-      s.loans.some(
-        (l) => l.req === req && !l.back && getAsset(l.asset).type === unit.type,
-      )
-    ) {
-      q("[data-status]").textContent =
-        "The approved quantity of this equipment type is already on loan.";
-      return;
-    }
-    const num = Math.max(...s.loans.map((l) => l.num)) + 1;
-    s.loans.push({ num, req, asset, who, due, back: false });
-    s.editing = false;
-    commit("Issued " + asset + " to " + who + " on slip L-" + num + ".");
+    const res = L.issue(s, s.draft);
+    commit(null, res.ok ? "" : "[data-error]");
   });
-  function restore(d) {
-    if (
-      !d ||
-      d.version !== 1 ||
-      !Object.hasOwn(screens, d.tab) ||
-      !shifts[d.phase] ||
-      (d.selected && !getReq(d.selected)) ||
-      !Array.isArray(d.notes) ||
-      !d.notes.every(
-        (n) => n && shifts[n.phase] && typeof n.text === "string",
-      ) ||
-      !Array.isArray(d.loans) ||
-      !d.loans.length ||
-      !d.loans.every(
-        (l) =>
-          l && getReq(l.req) && getAsset(l.asset) && Number.isInteger(l.num),
-      )
-    )
-      return;
-    s = {
-      ...original(),
-      ...d,
-      loans: d.loans.map((l) => ({ ...l })),
-      notes: d.notes.map((n) => ({ ...n })),
-    };
-    paint();
-  }
   paint();
   try {
-    restore(JSON.parse(localStorage.getItem(storageKey)));
+    const saved = L.restore(JSON.parse(localStorage.getItem(storageKey)));
+    if (saved) {
+      s = saved;
+      paint();
+    }
   } catch {
     // Keep the fresh shift when storage is unavailable or the saved data is invalid.
   }

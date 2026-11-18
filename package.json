@@ -1,0 +1,11 @@
+{
+  "name": "campus-stores",
+  "private": true,
+  "description": "Campus Stores media equipment desk. Static app; npm is only used for tests.",
+  "scripts": {
+    "test": "node --test \"tests/*.test.js\""
+  },
+  "devDependencies": {
+    "jsdom": "^26.1.0"
+  }
+}

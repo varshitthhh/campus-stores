@@ -38,6 +38,8 @@ body > main {
   --mark: light-dark(#bd502f, #f2a585);
   --ok: light-dark(#e3f1e8, #2d4838);
   --oktxt: light-dark(#25523d, #bedac8);
+  --warn: light-dark(#fbe3dc, #4a2a22);
+  --warntxt: light-dark(#8a2f12, #f6bfa9);
   background: var(--paper);
   color: var(--ink);
   font:
@@ -322,6 +324,76 @@ body > main {
 #campus-stores .statusbar button {
   font-size: 12px;
   background: transparent;
+}
+#campus-stores .tag.warn {
+  background: var(--warn);
+  color: var(--warntxt);
+  font-weight: 600;
+}
+#campus-stores .rowend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+#campus-stores .lines {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+#campus-stores .lines li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  padding: 6px 0;
+  border-top: 1px solid var(--line);
+}
+#campus-stores .linetype {
+  font-weight: 600;
+  min-width: 12ch;
+}
+#campus-stores .lines li button {
+  margin-left: auto;
+}
+#campus-stores .formerror {
+  background: var(--warn);
+  color: var(--warntxt);
+  border-left: 3px solid var(--mark);
+  padding: 8px 10px;
+  margin-top: 10px;
+  font-weight: 600;
+}
+#campus-stores .hint {
+  font-size: 12px;
+  color: var(--quiet);
+  margin-bottom: 8px;
+}
+#campus-stores .hint.warn {
+  color: var(--warntxt);
+  font-weight: 600;
+}
+#campus-stores .confirm {
+  border-left-color: var(--mark);
+  display: grid;
+  gap: 8px;
+}
+#campus-stores .confirm .buttons {
+  margin: 0;
+}
+#campus-stores .memo {
+  background: var(--memo);
+  color: var(--memotxt);
+  border-left-color: var(--mark);
+}
+#campus-stores .memo small {
+  color: var(--memotxt);
+}
+#campus-stores .memo > button {
+  margin-top: 6px;
 }
 @container (max-width:650px) {
   #campus-stores .shell {
