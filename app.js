@@ -12,6 +12,7 @@
   ];
   let s = L.original();
   let tdraft = {}; // hand-over fields kept across a failed submit
+  let rdraft = {}; // return fields kept across a failed submit
   const { getAsset, getReq, openLoan, isOverdue, holderText } = L;
   const esc = (x) =>
     String(x).replace(
@@ -76,6 +77,8 @@
         esc(s.error) +
         "</p>"
       : "";
+  const mismatchBadge = (loan) =>
+    !loan.back && loan.mismatch ? badge("Check unit", "warn") : "";
   const first = (list) => list[0];
 
   function requestPage() {
@@ -279,9 +282,17 @@
       overdueBadge(l) +
       "</p>" +
       errorBox() +
-      '<label><span>Returned by</span><select name="by"><option value="">Select…</option>' +
-      opts(people.map((p) => [p, p])) +
-      '</select></label><div class="buttons"><button type="submit" class="primary">Confirm return</button>' +
+      '<div class="form"><label><span>Returned by</span><select name="by"><option value="">Select…</option>' +
+      opts(
+        people.map((p) => [p, p]),
+        rdraft.by,
+      ) +
+      '</select></label><label><span>Unit received</span><select name="unit"><option value="">Select…</option>' +
+      opts(
+        assets.filter((x) => x.type === a.type).map((x) => [x.id, x.id + " · " + x.model]),
+        rdraft.unit,
+      ) +
+      '</select></label></div><div class="buttons"><button type="submit" class="primary">Confirm return</button>' +
       btn("Cancel", "cancelreturn") +
       "</div></form>"
     );
@@ -360,11 +371,15 @@
           l.due +
           (l.back && l.returnedBy
             ? " · Returned by " + l.returnedBy + " · " + l.returnedAt
+            : "") +
+          (!l.back && l.mismatch
+            ? " · Received " + l.mismatch.received + " from " + l.mismatch.by + " (" + l.mismatch.at + "), not the slip unit"
             : ""),
         l.back
           ? badge("Returned") + btn("Reopen", "reopen", String(l.num))
           : promiseBadge(l) +
               overdueBadge(l) +
+              mismatchBadge(l) +
               btn("Hand over", "transfer", String(l.num)) +
               btn("Record return", "return", String(l.num)),
       );
@@ -397,6 +412,7 @@
                 esc(l.due) +
                 " " +
                 overdueBadge(l) +
+                mismatchBadge(l) +
                 "</li>"
               );
             })
@@ -560,10 +576,12 @@
         s.transfer = 0;
         s.error = "";
         s.pending = l.num;
+        rdraft = {};
         focus = '[name="by"]';
         break;
       }
       case "cancelreturn":
+        rdraft = {};
         s.pending = 0;
         s.error = "";
         break;
@@ -624,9 +642,18 @@
       return;
     }
     if (f.matches("[data-return]")) {
-      const res = L.returnLoan(s, Number(f.dataset.num), form.get("by"));
-      s.error = res.ok ? "" : res.error;
-      commit(null, res.ok ? "" : "[data-error]");
+      const res = L.returnLoan(
+        s,
+        Number(f.dataset.num),
+        form.get("by"),
+        form.get("unit"),
+      );
+      const stay = !res.ok && !res.mismatch; // a mismatch closes the panel
+      s.error = stay ? res.error : "";
+      rdraft = stay
+        ? { by: form.get("by") || "", unit: form.get("unit") || "" }
+        : {};
+      commit(null, stay ? "[data-error]" : "");
       return;
     }
     if (f.matches("[data-transfer]")) {

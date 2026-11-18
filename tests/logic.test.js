@@ -3,6 +3,8 @@ const assert = require("node:assert/strict");
 const L = require("../logic.js");
 
 const fresh = () => L.original();
+// Return the slip's own unit, as the desk does when the right unit comes back.
+const ret = (s, num, by) => L.returnLoan(s, num, by, L.getLoan(s, num)?.asset);
 const film = L.getReq("RQ-214");
 const slip = (req, asset, who = "Kabir Sen", due) => ({
   req,
@@ -29,10 +31,10 @@ test("fulfilment: nothing issued -> all issued -> partly returned -> returned in
   L.issue(s, slip("RQ-214", "SP-02"));
   L.issue(s, slip("RQ-214", "AD-12"));
   assert.equal(L.fulfilment(s, film).label, "All issued");
-  L.returnLoan(s, 402, "Kabir Sen");
+  ret(s, 402, "Kabir Sen");
   assert.equal(L.fulfilment(s, film).label, "Partly returned");
-  L.returnLoan(s, 403, "Kabir Sen");
-  L.returnLoan(s, 404, "Leela Das");
+  ret(s, 403, "Kabir Sen");
+  ret(s, 404, "Leela Das");
   const f = L.fulfilment(s, film);
   assert.equal(f.label, "Returned in full");
   assert.equal(f.done, true);
@@ -94,13 +96,13 @@ test("return records who brought it back and when; rejects strangers and repeats
   const s = fresh();
   L.issue(s, slip("RQ-214", "AD-12"));
   s.phase = 2;
-  assert.equal(L.returnLoan(s, 402, "Someone").ok, false);
-  const r = L.returnLoan(s, 402, "Leela Das");
+  assert.equal(ret(s, 402, "Someone").ok, false);
+  const r = ret(s, 402, "Leela Das");
   assert.equal(r.ok, true);
   assert.equal(r.loan.returnedBy, "Leela Das");
   assert.equal(r.loan.returnedAt, "Saturday · 9:00 am");
-  assert.equal(L.returnLoan(s, 402, "Leela Das").ok, false);
-  assert.equal(L.returnLoan(s, 999, "Leela Das").ok, false);
+  assert.equal(ret(s, 402, "Leela Das").ok, false);
+  assert.equal(ret(s, 999, "Leela Das").ok, false);
   assert.equal(L.getLoan(s, 402).back, true);
   assert.equal(L.openLoan(s, "AD-12"), undefined);
 });
@@ -116,7 +118,7 @@ test("overdue depends on desk time, not on the loan alone", () => {
   s.phase = 2;
   assert.equal(L.isOverdue(s, adapter), true); // Sat 9:00 am
   assert.equal(L.isOverdue(s, mic), false); // due Sat 10 am
-  L.returnLoan(s, 404, "Leela Das");
+  ret(s, 404, "Leela Das");
   assert.equal(L.isOverdue(s, adapter), false); // returned slips are never overdue
 });
 
@@ -133,7 +135,7 @@ test("outstanding lists overdue slips first", () => {
 test("reopen undoes a return and clears who/when", () => {
   const s = fresh();
   L.issue(s, slip("RQ-214", "AD-12"));
-  L.returnLoan(s, 402, "Kabir Sen");
+  ret(s, 402, "Kabir Sen");
   assert.equal(L.reopenLoan(s, 402).ok, true);
   const l = L.getLoan(s, 402);
   assert.equal(l.back, false);
@@ -144,7 +146,7 @@ test("reopen undoes a return and clears who/when", () => {
 test("reopen is blocked when the unit has been issued again", () => {
   const s = fresh();
   L.issue(s, slip("RQ-214", "AD-12"));
-  L.returnLoan(s, 402, "Kabir Sen");
+  ret(s, 402, "Kabir Sen");
   L.issue(s, slip("RQ-214", "AD-12"));
   const r = L.reopenLoan(s, 402);
   assert.equal(r.ok, false);
@@ -155,7 +157,7 @@ test("reopen is blocked when the unit has been issued again", () => {
 test("a returned type can be issued again to the same request", () => {
   const s = fresh();
   L.issue(s, slip("RQ-214", "AD-12"));
-  L.returnLoan(s, 402, "Kabir Sen");
+  ret(s, 402, "Kabir Sen");
   assert.equal(L.issue(s, slip("RQ-214", "AD-15")).ok, true);
   assert.equal(L.fulfilment(s, film).lines[2].loan.asset, "AD-15");
 });
@@ -163,15 +165,15 @@ test("a returned type can be issued again to the same request", () => {
 test("handover text names the outstanding adapter and flags it overdue", () => {
   const s = fresh();
   issueKit(s);
-  L.returnLoan(s, 402, "Kabir Sen");
-  L.returnLoan(s, 403, "Kabir Sen");
+  ret(s, 402, "Kabir Sen");
+  ret(s, 403, "Kabir Sen");
   s.phase = 2;
   const t = L.handoverText(s);
   assert.match(t, /AD-12 USB-C → HDMI adapter \(RQ-214, Film Society, slip L-404, with Kabir Sen, due Fri 8 pm, OVERDUE\)/);
   assert.match(t, /MI-09/);
   assert.doesNotMatch(t, /PR-04/);
-  L.returnLoan(s, 404, "Leela Das");
-  L.returnLoan(s, 401, "Tara Shah");
+  ret(s, 404, "Leela Das");
+  ret(s, 401, "Tara Shah");
   assert.match(L.handoverText(s), /Nothing outstanding/);
 });
 
@@ -228,7 +230,7 @@ test("restore rejects damaged or inconsistent saves", () => {
 test("returnLoan with a blank \"returned by\" fails and leaves the slip open", () => {
   const s = fresh();
   L.issue(s, slip("RQ-214", "AD-12"));
-  const r = L.returnLoan(s, 402, "");
+  const r = ret(s, 402, "");
   assert.equal(r.ok, false);
   assert.match(r.error, /who is returning/);
   assert.equal(L.getLoan(s, 402).back, false);
@@ -259,7 +261,7 @@ test("handOver rejects a closed slip, an unknown person and a bad promise", () =
   assert.match(L.handOver(s, 402, "Leela Das", "Tuesday").error, /promised back/);
   assert.match(L.handOver(s, 402, "Leela Das", "toString").error, /promised back/);
   assert.equal("holder" in L.getLoan(s, 402), false); // nothing changed
-  L.returnLoan(s, 402, "Kabir Sen");
+  ret(s, 402, "Kabir Sen");
   assert.match(L.handOver(s, 402, "Leela Das", "Sat 9 am").error, /not outstanding/);
 });
 
@@ -301,4 +303,66 @@ test("restore accepts hand-over fields, still loads old saves, rejects bad ones"
   bad((l) => (l.promised = "Tuesday"));
   bad((l) => (l.promised = "toString"));
   bad((l) => (l.holder = 5));
+});
+
+test("returnLoan needs a known unit; a blank unit is refused", () => {
+  const s = fresh();
+  L.issue(s, slip("RQ-214", "AD-12"));
+  for (const unit of ["", undefined, "ZZ-99"]) {
+    const r = L.returnLoan(s, 402, "Leela Das", unit);
+    assert.equal(r.ok, false);
+    assert.match(r.error, /Choose the unit you received/);
+  }
+  assert.equal(L.getLoan(s, 402).back, false);
+});
+
+test("returning a different unit keeps the slip open and records the mismatch", () => {
+  const s = fresh();
+  L.issue(s, slip("RQ-214", "AD-12", "Kabir Sen"));
+  s.phase = 2;
+  const before = JSON.stringify(L.getLoan(s, 402));
+  const r = L.returnLoan(s, 402, "Leela Das", "AD-15");
+  assert.equal(r.ok, false);
+  assert.equal(r.mismatch, true);
+  assert.equal(r.error, "Received AD-15, but slip L-402 is for AD-12. Slip kept open — check the unit.");
+  assert.equal(s.notice, r.error);
+  const loan = L.getLoan(s, 402);
+  assert.deepEqual(loan.mismatch, { received: "AD-15", by: "Leela Das", at: "Saturday · 9:00 am" });
+  const { mismatch, ...rest } = loan;
+  assert.equal(JSON.stringify(rest), before); // nothing else on the slip changed
+  assert.equal(loan.asset, "AD-12");
+  assert.equal(loan.back, false);
+  assert.equal("returnedBy" in loan, false);
+  assert.equal(L.openLoan(s, "AD-12"), loan); // AD-12 still shown as out
+  assert.equal(L.openLoan(s, "AD-15"), undefined);
+  assert.ok(L.handoverText(s).includes("UNIT MISMATCH (received AD-15)"));
+});
+
+test("returning the right unit afterwards closes the slip and clears the warning", () => {
+  const s = fresh();
+  L.issue(s, slip("RQ-214", "AD-12", "Kabir Sen"));
+  L.returnLoan(s, 402, "Leela Das", "AD-15");
+  const r = L.returnLoan(s, 402, "Leela Das", "AD-12");
+  assert.equal(r.ok, true);
+  assert.equal(L.getLoan(s, 402).back, true);
+  assert.equal("mismatch" in L.getLoan(s, 402), false);
+  assert.doesNotMatch(L.handoverText(s), /UNIT MISMATCH/);
+});
+
+test("restore accepts and validates the optional mismatch field", () => {
+  const s = fresh();
+  L.issue(s, slip("RQ-214", "AD-12", "Kabir Sen"));
+  L.returnLoan(s, 402, "Leela Das", "AD-15");
+  const ok = L.restore(JSON.parse(JSON.stringify(s)));
+  assert.equal(ok.loans[1].mismatch.received, "AD-15");
+  const bad = (mutate) => {
+    const d = JSON.parse(JSON.stringify(s));
+    mutate(d.loans[1]);
+    assert.equal(L.restore(d), null);
+  };
+  bad((x) => (x.mismatch.received = "ZZ-99"));
+  bad((x) => (x.mismatch.by = "Mallory"));
+  bad((x) => (x.mismatch.at = 5));
+  bad((x) => (x.mismatch = "AD-15"));
+  bad((x) => (x.mismatch = null));
 });

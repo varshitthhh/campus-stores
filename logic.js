@@ -251,11 +251,23 @@
   }
 
   /* Close a slip, recording who brought the unit back and when. */
-  function returnLoan(s, num, by) {
+  function returnLoan(s, num, by, unit) {
     const loan = getLoan(s, num);
     if (!loan || loan.back) return { ok: false, error: "That slip is not outstanding." };
     if (!people.includes(by))
       return { ok: false, error: "Choose who is returning the unit." };
+    if (!getAsset(unit))
+      return { ok: false, error: "Choose the unit you received." };
+    if (unit !== loan.asset) {
+      /* Wrong physical unit: keep the slip open and note what came back. */
+      loan.mismatch = { received: unit, by, at: shifts[s.phase].time };
+      s.pending = 0;
+      s.notice =
+        "Received " + unit + ", but slip L-" + loan.num + " is for " + loan.asset +
+        ". Slip kept open — check the unit.";
+      return { ok: false, mismatch: true, error: s.notice };
+    }
+    delete loan.mismatch;
     loan.back = true;
     loan.returnedBy = by;
     loan.returnedAt = shifts[s.phase].time;
@@ -334,6 +346,7 @@
             ", due " +
             l.due +
             (isOverdue(s, l) ? ", OVERDUE" : "") +
+            (l.mismatch ? ", UNIT MISMATCH (received " + l.mismatch.received + ")" : "") +
             ")"
           );
         })
@@ -370,6 +383,11 @@
       if (typeof l.back !== "boolean") return null;
       if (l.holder !== undefined && !people.includes(l.holder)) return null;
       if (l.promised !== undefined && !Object.hasOwn(dueTimes, l.promised)) return null;
+      if (l.mismatch !== undefined) {
+        const m = l.mismatch;
+        if (!m || typeof m !== "object" || !getAsset(m.received) || !people.includes(m.by) || !isStr(m.at))
+          return null;
+      }
       if (l.back) {
         if (l.returnedBy !== undefined && !people.includes(l.returnedBy))
           return null;

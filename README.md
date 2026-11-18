@@ -32,7 +32,7 @@ The desk could not answer "can he leave with everything he needs?", and the loan
 
 - **3:45 pm pickup.** Before: three separate slips, with nothing showing what was still missing. After: the request shows each approved item as Not issued, Out, or Returned, with a one-click Issue button that fills in the slip.
 - **7:30 pm partial return.** Before: return the projector and speaker; the adapter stays on a slip in Kabir's name. After: the return asks who is bringing it back and records it. **Hand over** sets the adapter as "with Leela Das (issued to Kabir Sen), promised Sat 9 am".
-- **9:00 am handover.** Before: guess which open slip is the adapter and who has it. After: the Desk book lists what is still outstanding with the holder and promise, and the adapter is marked Overdue against the club's Fri 8 pm deadline. Leela returns it and "Returned by" is chosen explicitly, never preselected.
+- **9:00 am handover.** Before: guess which open slip is the adapter and who has it. After: the Desk book lists what is still outstanding with the holder and promise, and the adapter is marked Overdue against the club's Fri 8 pm deadline. Leela returns it: "Returned by" and "Unit received" are both chosen explicitly, never preselected. If she hands back AD-15 against the AD-12 slip, the slip stays open with a "Check unit" warning and the mismatch is recorded instead of closing the wrong unit.
 
 ### What I kept
 
@@ -44,7 +44,7 @@ Bulk issue, because it would speed up the step where checking each unit matters.
 
 ### Known limits
 
-- The app does not verify which physical adapter came back. AD-12 and AD-15 sit in the same bin. Recording a mismatch without overwriting the slip is my next step.
+- A genuine swap (AD-15 really is the unit to keep) needs a correction step, which is not built. Until then the slip stays open with its warning.
 - Reopening a returned slip still clears the earlier return details.
 - Tested in jsdom, plus one headless-browser load check. No manual mobile or screen-reader pass.
 
@@ -65,7 +65,7 @@ npm install
 npm test
 ```
 
-The suite has 42 tests. `tests/logic.test.js` covers the rules (issue validation, fulfilment, overdue, returns, reopen, restore). `tests/app.test.js` drives the real page end to end: the full pickup to return story, validation errors, persistence, blocked storage, and markup injection.
+The suite has 47 tests. `tests/logic.test.js` covers the rules (issue validation, fulfilment, overdue, returns, reopen, restore). `tests/app.test.js` drives the real page end to end: the full pickup to return story, validation errors, persistence, blocked storage, and markup injection.
 
 ## Source
 

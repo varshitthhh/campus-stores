@@ -57,10 +57,11 @@ function boot({ saved, brokenStorage } = {}) {
       app.set("who", who);
       app.submit("[data-issue]");
     },
-    ret: (num, by) => {
+    ret: (num, by, unit) => {
       app.tab("Loan register");
       app.click('[data-action="return"][data-val="' + num + '"]');
       app.set("by", by);
+      app.set("unit", unit ?? app.saved().loans.find((l) => l.num === num).asset);
       app.submit("[data-return]");
     },
   };
@@ -306,6 +307,10 @@ test("return requires choosing who returned it; blank keeps the slip open", () =
   assert.equal(a.saved().loans[0].back, false);
   a.set("by", "Tara Shah");
   a.submit("[data-return]");
+  assert.match(a.$("[data-return] [role=alert]").textContent, /Choose the unit you received/);
+  assert.equal(a.$('[name="by"]').value, "Tara Shah"); // earlier choice kept
+  a.set("unit", "MI-09");
+  a.submit("[data-return]");
   assert.match(a.status(), /MI-09 returned by Tara Shah/);
 });
 
@@ -348,4 +353,37 @@ test("7:30 hand over: Kabir -> Leela, promised Sat 9 am, shown everywhere and su
   assert.match(b.status(), /1 slip is overdue/);
   assert.match(b.page(), /Overdue/);
   assert.match(b.page(), /Promised Sat 9 am/);
+});
+
+test("9:00 return of the wrong adapter: warning, slip stays open; right unit then closes it", () => {
+  const a = boot();
+  a.issue("RQ-214", "AD-12", "Kabir Sen");
+  a.click('[data-action="advance"]');
+  a.click('[data-action="advance"]');
+  a.tab("Loan register");
+  a.click('[data-action="return"][data-val="402"]');
+  assert.equal(a.$('[name="unit"]').value, ""); // blank by default
+  const units = [...a.$('[name="unit"]').options].map((o) => o.value).filter(Boolean);
+  assert.deepEqual(units, ["AD-12", "AD-15"]); // same type only
+  assert.match(a.$('[name="unit"]').textContent, /AD-15 · Anker A8312/);
+  a.set("by", "Leela Das");
+  a.set("unit", "AD-15");
+  a.submit("[data-return]");
+  assert.equal(
+    a.status(),
+    "Received AD-15, but slip L-402 is for AD-12. Slip kept open — check the unit.",
+  );
+  assert.equal(a.$("[data-return]"), null);
+  assert.match(a.page(), /Check unit/);
+  assert.equal(a.saved().loans[1].back, false);
+  assert.equal(a.saved().loans[1].asset, "AD-12");
+  a.tab("Desk book");
+  assert.match(a.$(".memo").textContent, /Check unit/);
+  a.tab("Inventory");
+  assert.ok(a.page().includes("With Kabir Sen (L-402")); // AD-12 still out
+  a.ret(402, "Leela Das", "AD-12");
+  assert.match(a.status(), /AD-12 returned by Leela Das/);
+  a.tab("Desk book");
+  assert.doesNotMatch(a.$(".memo").textContent, /AD-12/);
+  assert.doesNotMatch(a.$(".memo").textContent, /Check unit/);
 });
